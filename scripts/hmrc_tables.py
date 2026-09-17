@@ -165,11 +165,7 @@ def monthly_block(grid: list[list[str]], sheet: str, url: str) -> MonthlyBlock:
     silently swept into the monthly series.
     """
     start = next(
-        (
-            index
-            for index, row in enumerate(grid)
-            if row and _MONTHLY_BLOCK.match(row[0].strip())
-        ),
+        (index for index, row in enumerate(grid) if row and _MONTHLY_BLOCK.match(row[0].strip())),
         None,
     )
     if start is None:
@@ -208,13 +204,13 @@ def monthly_block(grid: list[list[str]], sheet: str, url: str) -> MonthlyBlock:
         reference_date, provisional = parsed
         rows.append((reference_date, provisional, row))
     if not rows:
-        raise ValueError(
-            f"HMRC workbook {url} sheet {sheet} monthly block carries no dated rows"
-        )
+        raise ValueError(f"HMRC workbook {url} sheet {sheet} monthly block carries no dated rows")
     return MonthlyBlock(sheet=sheet, title=header[0].strip(), columns=columns, rows=rows)
 
 
-def parse_value(raw: str, *, sheet: str, label: str, reference_date: date, url: str) -> float | None:
+def parse_value(
+    raw: str, *, sheet: str, label: str, reference_date: date, url: str
+) -> float | None:
     """Parse one published cell, returning None for a published missing marker."""
     text = raw.strip()
     if text.lower() in MISSING_VALUES:

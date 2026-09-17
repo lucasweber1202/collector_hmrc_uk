@@ -293,9 +293,7 @@ def validate(observations: list[Observation], natives: dict[str, dict[str, str]]
     if off_month:
         raise ValueError(f"HMRC tobacco published non-month-start reference dates {off_month[:5]}")
 
-    long_gaps = [
-        (a, b) for a, b in pairwise(dates) if (b - a).days > MAX_GAP_DAYS
-    ]
+    long_gaps = [(a, b) for a, b in pairwise(dates) if (b - a).days > MAX_GAP_DAYS]
     if long_gaps:
         raise ValueError(
             f"HMRC tobacco monthly cadence broken by gaps longer than {MAX_GAP_DAYS} days at "
@@ -307,7 +305,9 @@ def validate(observations: list[Observation], natives: dict[str, dict[str, str]]
     for observation in observations:
         floor = floors[natives[observation.series_id]["measure"]]
         if not floor <= observation.value <= MAX_PLAUSIBLE_VALUE:
-            implausible.append((observation.series_id, observation.reference_date, observation.value))
+            implausible.append(
+                (observation.series_id, observation.reference_date, observation.value)
+            )
     if implausible:
         raise ValueError(
             f"HMRC tobacco published values outside their plausible envelope, for example "

@@ -65,7 +65,9 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def _availability_rows(data: Any, result: WriteResult, collected_at: datetime) -> list[dict[str, Any]]:
+def _availability_rows(
+    data: Any, result: WriteResult, collected_at: datetime
+) -> list[dict[str, Any]]:
     """Build immutable PIT rows for the vintages written in this run.
 
     A later revision of an already stored reference period must never reuse the
@@ -89,7 +91,10 @@ def _availability_rows(data: Any, result: WriteResult, collected_at: datetime) -
                 data.max_lag_days,
                 data.inferred_lag_days,
             )
-            if basis not in {"official_timestamp", "official_date", "archived_release"} and series_id in result.preexisting_series:
+            if (
+                basis not in {"official_timestamp", "official_date", "archived_release"}
+                and series_id in result.preexisting_series
+            ):
                 available_at, basis, release_date = collected_at, "first_seen", None
         rows.append(
             {

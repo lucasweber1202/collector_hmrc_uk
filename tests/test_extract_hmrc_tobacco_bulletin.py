@@ -85,9 +85,7 @@ def _panel(
                 "published_unit": "GBP million",
             }
             for step in range(dates):
-                observations.append(
-                    Observation(series_id, _month(step), 100.0, "snapshot")
-                )
+                observations.append(Observation(series_id, _month(step), 100.0, "snapshot"))
     return observations, natives
 
 
@@ -172,7 +170,11 @@ def test_negative_receipts_are_accepted_as_published() -> None:
     """HMRC publishes negative receipts where repayments exceed payments."""
     observations, natives = _panel()
     negative = Observation(make_series_id("RECEIPTS", "OTHER"), _month(0), -4.920903, "snapshot")
-    kept = [o for o in observations if (o.series_id, o.reference_date) != (negative.series_id, negative.reference_date)]
+    kept = [
+        o
+        for o in observations
+        if (o.series_id, o.reference_date) != (negative.series_id, negative.reference_date)
+    ]
     validate([negative, *kept], natives)
 
 
@@ -180,7 +182,11 @@ def test_negative_clearances_are_refused() -> None:
     """A physical quantity released for consumption cannot be negative."""
     observations, natives = _panel()
     broken = Observation(make_series_id("CLEARANCES", "CIGARETTES"), _month(0), -5.0, "snapshot")
-    kept = [o for o in observations if (o.series_id, o.reference_date) != (broken.series_id, broken.reference_date)]
+    kept = [
+        o
+        for o in observations
+        if (o.series_id, o.reference_date) != (broken.series_id, broken.reference_date)
+    ]
     with pytest.raises(ValueError, match="plausible envelope"):
         validate([broken, *kept], natives)
 
