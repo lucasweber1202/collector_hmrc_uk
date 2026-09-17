@@ -63,16 +63,41 @@ MONTH = "August 2023"
 def _workbook(shared_value: str = "1579", wine_shared: str = "500") -> bytes:
     return build(
         [
-            {"name": "Beer", "title": "Beer", "header": BEER_COLS,
-             "rows": [(MONTH, ("1", "2", "3", "4", "5", shared_value))], "table_number": 1},
-            {"name": "Cider", "title": "Cider", "header": SIMPLE_COLS,
-             "rows": [(MONTH, ("6", "7", "8", "1579"))], "table_number": 2},
-            {"name": "Wine", "title": "Wine", "header": WINE_COLS,
-             "rows": [(MONTH, ("9", "10", "500", "1579"))], "table_number": 3},
-            {"name": "Other_Fermented_Products", "title": "OFP", "header": OFP_COLS,
-             "rows": [(MONTH, ("11", "12", wine_shared, "1579"))], "table_number": 4},
-            {"name": "Spirits", "title": "Spirits", "header": SPIRIT_COLS,
-             "rows": [(MONTH, ("13", "14", "15", "16", "1579"))], "table_number": 5},
+            {
+                "name": "Beer",
+                "title": "Beer",
+                "header": BEER_COLS,
+                "rows": [(MONTH, ("1", "2", "3", "4", "5", shared_value))],
+                "table_number": 1,
+            },
+            {
+                "name": "Cider",
+                "title": "Cider",
+                "header": SIMPLE_COLS,
+                "rows": [(MONTH, ("6", "7", "8", "1579"))],
+                "table_number": 2,
+            },
+            {
+                "name": "Wine",
+                "title": "Wine",
+                "header": WINE_COLS,
+                "rows": [(MONTH, ("9", "10", "500", "1579"))],
+                "table_number": 3,
+            },
+            {
+                "name": "Other_Fermented_Products",
+                "title": "OFP",
+                "header": OFP_COLS,
+                "rows": [(MONTH, ("11", "12", wine_shared, "1579"))],
+                "table_number": 4,
+            },
+            {
+                "name": "Spirits",
+                "title": "Spirits",
+                "header": SPIRIT_COLS,
+                "rows": [(MONTH, ("13", "14", "15", "16", "1579"))],
+                "table_number": 5,
+            },
         ]
     )
 
@@ -88,12 +113,25 @@ def _panel(
     observations: list[Observation] = []
     natives: dict[str, dict[str, str]] = {}
     for sheet, product in PRODUCT_SHEETS.items():
-        for measure in ("CLEARANCES_TOTAL", "RECEIPTS", "CLEARANCES_NORELIEF",
-                        "CLEARANCES_GE85", "CLEARANCES_EXSHIP", "CLEARANCES_EXWAREHOUSE",
-                        "CLEARANCES_UKREGISTERED", "PRODUCTION_LAL", "CLEARANCES_LT85"):
+        for measure in (
+            "CLEARANCES_TOTAL",
+            "RECEIPTS",
+            "CLEARANCES_NORELIEF",
+            "CLEARANCES_GE85",
+            "CLEARANCES_EXSHIP",
+            "CLEARANCES_EXWAREHOUSE",
+            "CLEARANCES_UKREGISTERED",
+            "PRODUCTION_LAL",
+            "CLEARANCES_LT85",
+        ):
             series_id = make_series_id(product, measure)
-            natives[series_id] = {"product": product, "measure": measure, "sheet": sheet,
-                                  "published_unit": "litres of alcohol", "label": measure}
+            natives[series_id] = {
+                "product": product,
+                "measure": measure,
+                "sheet": sheet,
+                "published_unit": "litres of alcohol",
+                "label": measure,
+            }
             for step in range(dates):
                 observations.append(Observation(series_id, _month(step), 100.0, "snapshot"))
     return observations, natives
@@ -142,7 +180,11 @@ def test_no_duplicate_keys_survive_the_shared_columns() -> None:
         (WINE_OFP, "WINE", ("WINEOFP", "RECEIPTS")),
         ("Total beer clearances (litres of alcohol)", "BEER", ("BEER", "CLEARANCES_TOTAL")),
         ("Total Alcohol Duty receipts from beer (pounds million)", "BEER", ("BEER", "RECEIPTS")),
-        ("Clearances at least 22% ABV (litres of alcohol)", "SPIRITS", ("SPIRITS", "CLEARANCES_GE22")),
+        (
+            "Clearances at least 22% ABV (litres of alcohol)",
+            "SPIRITS",
+            ("SPIRITS", "CLEARANCES_GE22"),
+        ),
     ],
 )
 def test_columns_are_classified_to_the_right_product(
@@ -171,8 +213,16 @@ def test_an_unrecognised_column_fails_loudly() -> None:
 
 
 def test_a_missing_sheet_fails_loudly() -> None:
-    partial = build([{"name": "Beer", "title": "Beer", "header": BEER_COLS,
-                      "rows": [(MONTH, ("1", "2", "3", "4", "5", "1579"))]}])
+    partial = build(
+        [
+            {
+                "name": "Beer",
+                "title": "Beer",
+                "header": BEER_COLS,
+                "rows": [(MONTH, ("1", "2", "3", "4", "5", "1579"))],
+            }
+        ]
+    )
     with pytest.raises(ValueError, match="missing sheet"):
         parse_ods(partial, "t://a", "snap")
 
@@ -184,7 +234,9 @@ def test_series_ids_round_trip() -> None:
         assert make_series_id(parsed_product, parsed_measure) == series_id
 
 
-@pytest.mark.parametrize("series_id", ["HMRC_ALCOHOL_BEER", "HMRC_ALCOHOL_MEAD_RECEIPTS", "X_Y_Z_W"])
+@pytest.mark.parametrize(
+    "series_id", ["HMRC_ALCOHOL_BEER", "HMRC_ALCOHOL_MEAD_RECEIPTS", "X_Y_Z_W"]
+)
 def test_a_malformed_series_id_is_refused(series_id: str) -> None:
     with pytest.raises(ValueError):
         parse_series_id(series_id)
