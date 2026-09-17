@@ -12,6 +12,8 @@ dependencies = [
   "azure-keyvault-secrets>=4.8",
   "databricks-sqlalchemy>=2.0",
   "httpx[socks]>=0.27",
+  "numpy>=1.26,<2.0",
+  "odfpy>=1.4",
   "psycopg2-binary>=2.9",
   "pyspark==4.1.1",
   "sqlalchemy>=2.0",
