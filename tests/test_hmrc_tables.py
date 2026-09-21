@@ -60,7 +60,9 @@ def test_a_non_month_label_is_not_a_period(label: str) -> None:
 
 @pytest.mark.parametrize("marker", ["[X]", "[No Data]", "[x]", "", "..", "-"])
 def test_a_published_missing_marker_is_not_a_zero(marker: str) -> None:
-    assert parse_value(marker, sheet="s", label="l", reference_date=date(2020, 1, 1), url="u") is None
+    assert (
+        parse_value(marker, sheet="s", label="l", reference_date=date(2020, 1, 1), url="u") is None
+    )
 
 
 def test_an_unparseable_value_fails_loudly() -> None:

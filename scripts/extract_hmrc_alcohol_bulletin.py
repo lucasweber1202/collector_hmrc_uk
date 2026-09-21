@@ -335,9 +335,7 @@ def validate(observations: list[Observation], natives: dict[str, dict[str, str]]
     present = {fields["product"] for fields in natives.values()}
     expected = set(PRODUCT_SHEETS.values())
     if not expected <= present:
-        raise ValueError(
-            f"HMRC alcohol is missing published products {sorted(expected - present)}"
-        )
+        raise ValueError(f"HMRC alcohol is missing published products {sorted(expected - present)}")
 
     keys = [(observation.series_id, observation.reference_date) for observation in observations]
     if len(keys) != len(set(keys)):
@@ -381,7 +379,9 @@ def validate(observations: list[Observation], natives: dict[str, dict[str, str]]
         receipts = natives[observation.series_id]["measure"] == "RECEIPTS"
         floor = MIN_PLAUSIBLE_RECEIPTS if receipts else MIN_PLAUSIBLE_QUANTITY
         if not floor <= observation.value <= MAX_PLAUSIBLE_VALUE:
-            implausible.append((observation.series_id, observation.reference_date, observation.value))
+            implausible.append(
+                (observation.series_id, observation.reference_date, observation.value)
+            )
     if implausible:
         raise ValueError(
             f"HMRC alcohol published values outside their plausible envelope, for example "
