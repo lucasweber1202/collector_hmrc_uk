@@ -26,13 +26,11 @@ DEFAULT_DOUBLE_TYPE = "DOUBLE"
 
 CREATE_SCHEMA = f"CREATE SCHEMA IF NOT EXISTS {SCHEMA_NAME}"
 
-# Deviation from the fleet metadata DDL, requested explicitly for this
-# repository: `source_id` carries the source_registry.csv key so a predictor row
-# can be traced to its registry entry without parsing the identifier.
+# The mandatory metadata table follows the fleet schema. Source identity is
+# encoded in series_id and retained in the source-specific catalog and snapshots.
 CREATE_METADATA_TABLE = f"""
 CREATE TABLE IF NOT EXISTS {SCHEMA_NAME}.{METADATA_TABLE} (
     series_id VARCHAR(200) NOT NULL,
-    source_id VARCHAR(100) NOT NULL,
     name VARCHAR(500) NOT NULL,
     description VARCHAR(2000),
     country VARCHAR(3) NOT NULL,
