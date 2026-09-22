@@ -3,7 +3,7 @@ import pytest
 from scripts.extract_hmrc_alcohol_bulletin import _build_catalog, classify_column
 
 
-def test_spirits_production_is_quarterly():
+def test_spirits_production_is_quarterly() -> None:
     native = {
         "HMRC_ALCOHOL_SPIRITS_PRODUCTION_LAL": {
             "product": "SPIRITS",
@@ -25,6 +25,6 @@ def test_spirits_production_is_quarterly():
         "Total Alcohol Duty receipts from beer (pounds million)",
     ],
 )
-def test_a_product_label_cannot_be_reassigned_to_another_sheet(label):
+def test_a_product_label_cannot_be_reassigned_to_another_sheet(label: str) -> None:
     with pytest.raises(ValueError, match="product"):
         classify_column(label, "SPIRITS")

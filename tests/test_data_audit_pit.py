@@ -1,3 +1,5 @@
+from sqlalchemy.engine import Engine
+
 """Audit regressions: a page timestamp is not evidence for current-file values."""
 
 from datetime import UTC, date, datetime, timedelta
@@ -8,14 +10,14 @@ from scripts.availability import attribute_release, get_series_as_of, upsert_ava
 from scripts.time_series import Observation, upsert_time_series
 
 
-def test_page_history_is_only_inferred():
+def test_page_history_is_only_inferred() -> None:
     release = datetime(2020, 1, 7, 9, tzinfo=UTC)
     _, basis, released = attribute_release(date(2020, 1, 6), [release], 0, 31, 1)
     assert basis == "inferred"
     assert released is None
 
 
-def test_current_file_backfill_and_legacy_rows_cannot_leak(engine):
+def test_current_file_backfill_and_legacy_rows_cannot_leak(engine: Engine) -> None:
     ref = date(2020, 1, 6)
     release = datetime(2020, 1, 7, 9, tzinfo=UTC)
     fetched = datetime(2026, 9, 18, 12, tzinfo=UTC)
