@@ -21,7 +21,6 @@ UNITS = frozenset({"currency", "other"})
 ECO_GROUPS = frozenset({"public_finance"})
 
 _COMPARABLE_COLUMNS = (
-    "source_id",
     "name",
     "description",
     "country",
@@ -82,7 +81,7 @@ def _as_date(value: object) -> date | None:
 
 def validate_catalog(catalog: dict[str, dict[str, Any]]) -> None:
     for series_id, fields in sorted(catalog.items()):
-        for key in ("source_id", "name", "source_url"):
+        for key in ("name", "source_url"):
             if not str(fields.get(key, "")).strip():
                 raise ValueError(f"{series_id} metadata is missing required field {key!r}")
         if fields["frequency"] not in FREQUENCIES:
@@ -112,7 +111,6 @@ def upsert_metadata(
         desired.append(
             {
                 "series_id": series_id,
-                "source_id": fields["source_id"],
                 "name": fields["name"],
                 "description": fields.get("description"),
                 "country": COUNTRY_CURRENCY,
