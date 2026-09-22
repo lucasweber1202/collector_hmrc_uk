@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 _TABLE = f"{SCHEMA_NAME}.{METADATA_TABLE}"
 BATCH_SIZE = 500
 # Fleet controlled vocabularies, narrowed to the values this repository emits.
-FREQUENCIES = frozenset({"monthly"})
+FREQUENCIES = frozenset({"monthly", "quarterly"})
 UNITS = frozenset({"currency", "other"})
 ECO_GROUPS = frozenset({"public_finance"})
 

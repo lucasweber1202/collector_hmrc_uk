@@ -321,7 +321,10 @@ def test_the_catalog_satisfies_the_metadata_vocabularies() -> None:
     clearances = catalog[make_series_id("BEER", "CLEARANCES_TOTAL")]
     assert receipts["unit"] == "currency"
     assert clearances["unit"] == "other"
-    assert all(e["frequency"] == "monthly" for e in catalog.values())
+    assert all(
+        e["frequency"] == ("quarterly" if s == "HMRC_ALCOHOL_SPIRITS_PRODUCTION_LAL" else "monthly")
+        for s, e in catalog.items()
+    )
     # The short history and its cause must be visible to a research user.
     assert "2023-08" in receipts["description"]
     assert "can be negative" in receipts["description"]

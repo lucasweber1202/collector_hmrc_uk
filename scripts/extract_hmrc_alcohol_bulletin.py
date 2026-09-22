@@ -172,8 +172,12 @@ def classify_column(label: str, sheet_product: str) -> tuple[str, str, str | Non
         return product, measure, unit
 
     if _PRODUCT_RECEIPTS.match(key):
+        if key != f"total alcohol duty receipts from {PRODUCT_NAMES[sheet_product]}":
+            raise ValueError(f"Receipt product does not match sheet {sheet_product}: {label!r}")
         return sheet_product, "RECEIPTS", unit
     if _TOTAL_CLEARANCES.match(key):
+        if key != f"total {PRODUCT_NAMES[sheet_product]} clearances":
+            raise ValueError(f"Clearance product does not match sheet {sheet_product}: {label!r}")
         return sheet_product, "CLEARANCES_TOTAL", unit
 
     known = MEASURES.get(key)
@@ -296,11 +300,18 @@ def _build_catalog(
         unit = fields["published_unit"] or "as published"
         receipts = fields["measure"] == "RECEIPTS"
         published_label = fields["label"]
+        # HMRC's Spirits worksheet explicitly reports production quarterly,
+        # even though its values appear inside the monthly block.
+        frequency = (
+            "quarterly"
+            if fields["product"] == "SPIRITS" and fields["measure"].startswith("PRODUCTION")
+            else "monthly"
+        )
         catalog[series_id] = {
             "source_id": SOURCE_ID,
             "name": f"UK alcohol duty, {product}: {published_label}",
             "description": (
-                f"Monthly UK figure for {product}, published by HM Revenue & Customs in the "
+                f"{frequency.capitalize()} UK figure for {product}, published by HM Revenue & Customs in the "
                 f"Alcohol Bulletin as {published_label!r}, in {unit}. "
                 + (
                     "Receipts are duty actually received net of repayments and can be negative "
@@ -313,7 +324,7 @@ def _build_catalog(
                 "published with no derived transformation; HMRC's own financial-year and "
                 "calendar-year totals are not collected because they aggregate these months."
             ),
-            "frequency": "monthly",
+            "frequency": frequency,
             "unit": "currency" if receipts else "other",
             "eco_group": "public_finance",
             "source_url": PAGE_URL,
