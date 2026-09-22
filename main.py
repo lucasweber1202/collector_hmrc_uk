@@ -12,20 +12,27 @@ import io
 import logging
 import sys
 import traceback
-from datetime import UTC, datetime
+from dataclasses import replace
+from datetime import UTC, date, datetime
 from typing import Any
 
 from sqlalchemy.engine import Engine
 
-from scripts.availability import upsert_availability
-from scripts.config import LOG_LEVEL, missing_environment, unresolved_credentials
+from scripts.availability import refresh_snapshot_provenance, upsert_availability
+from scripts.config import (
+    DEFAULT_START_DATE,
+    LOG_LEVEL,
+    START_DATE_LOOKBACK_MONTHS,
+    missing_environment,
+    unresolved_credentials,
+)
 from scripts.db import build_engine
-from scripts.extract import DATASETS, collect_one, open_client, resolve
+from scripts.extract import DATASETS, collect_one, filter_usable_series, open_client, resolve
 from scripts.init_db import init_db
 from scripts.metadata import upsert_metadata
 from scripts.run_logs import insert_run_log
 from scripts.snapshots import upsert_snapshots
-from scripts.time_series import WriteResult, upsert_time_series
+from scripts.time_series import WriteResult, get_last_observations, upsert_time_series
 
 logger = logging.getLogger("main")
 TRANSACTIONAL_DIALECTS = frozenset({"postgresql", "sqlite"})
@@ -62,7 +69,68 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         choices=sorted(DATASETS),
         help="Collect only this data set; repeatable. Defaults to every data set.",
     )
+    parser.add_argument(
+        "--start-date",
+        type=date.fromisoformat,
+        default=None,
+        help=(
+            "Earliest reference date to process. If omitted, the pipeline "
+            "rewinds from the latest stored reference_date."
+        ),
+    )
     return parser.parse_args(argv)
+
+
+def _rewind(anchor: date, months: int) -> date:
+    """Step ``anchor`` back ``months`` calendar months, clamping the day."""
+    total = (anchor.year * 12 + anchor.month - 1) - months
+    year, month = divmod(total, 12)
+    month += 1
+    day = min(
+        anchor.day,
+        [
+            31,
+            29 if year % 4 == 0 and (year % 100 != 0 or year % 400 == 0) else 28,
+            31,
+            30,
+            31,
+            30,
+            31,
+            31,
+            30,
+            31,
+            30,
+            31,
+        ][month - 1],
+    )
+    return date(year, month, day)
+
+
+def resolve_start_date(engine: Engine, explicit: date | None) -> date:
+    """Canonical incremental contract (GUIDELINES.md 5).
+
+    An explicit --start-date always wins. Otherwise rewind
+    START_DATE_LOOKBACK_MONTHS from the latest stored reference_date so late
+    revisions are re-fetched without re-downloading the archive; on a fresh
+    database there is nothing to rewind from, so fall back to
+    DEFAULT_START_DATE.
+    """
+    if explicit is not None:
+        logger.info("Start date %s (explicit --start-date)", explicit)
+        return explicit
+    stored = get_last_observations(engine)
+    if not stored:
+        logger.info("Start date %s (fresh database, COLLECTOR_START_DATE)", DEFAULT_START_DATE)
+        return DEFAULT_START_DATE
+    latest = max(stored.values())
+    start = _rewind(latest, START_DATE_LOOKBACK_MONTHS)
+    logger.info(
+        "Start date %s (latest stored reference_date %s rewound %d months)",
+        start,
+        latest,
+        START_DATE_LOOKBACK_MONTHS,
+    )
+    return start
 
 
 def _availability_rows(
@@ -97,7 +165,7 @@ def _availability_rows(
     return rows
 
 
-def collect_source(engine: Engine, source_ids: list[str] | None = None) -> None:
+def collect_source(engine: Engine, start_date: date, source_ids: list[str] | None = None) -> None:
     """Collect and persist each selected data set in its own transaction.
 
     One repository owns several data sets from the same publisher. They share
@@ -117,6 +185,19 @@ def collect_source(engine: Engine, source_ids: list[str] | None = None) -> None:
         for source_id in selected:
             try:
                 data = collect_one(client, source_id)
+                # 5.1: prune dead and history-less series, judged over the full
+                # parsed history, before anything is written.
+                kept_observations, kept_catalog, _usability = filter_usable_series(
+                    data.observations, data.catalog, datetime.now(UTC).date()
+                )
+                # This source publishes a whole file per run and cannot be queried by
+                # date, so the incremental window is applied after parsing while the
+                # external --start-date contract stays the fleet's.
+                data = replace(
+                    data,
+                    observations=[o for o in kept_observations if o.reference_date >= start_date],
+                    catalog=kept_catalog,
+                )
                 collected_at = datetime.now(UTC)
                 with engine.begin() as conn:
                     snapshots_written = upsert_snapshots(conn, data.snapshots)
@@ -124,6 +205,17 @@ def collect_source(engine: Engine, source_ids: list[str] | None = None) -> None:
                     availability_rows = _availability_rows(data, result, collected_at)
                     availability_written = upsert_availability(
                         conn, availability_rows, collected_at
+                    )
+                    # A same-day revision keeps its availability key, so no new row is
+                    # owed -- but provenance must stop naming the superseded snapshot.
+                    refresh_snapshot_provenance(
+                        conn,
+                        [
+                            row
+                            for row in availability_rows
+                            if (row["series_id"], row["reference_date"], row["vintage_date"])
+                            in result.same_day_keys
+                        ],
                     )
                     metadata_inserted, metadata_updated = upsert_metadata(
                         conn, data.catalog, collected_at
@@ -150,7 +242,7 @@ def collect_source(engine: Engine, source_ids: list[str] | None = None) -> None:
         ) from failures[0][1]
 
 
-def main(source_ids: list[str] | None = None) -> int:
+def main(start_date_arg: date | None = None, source_ids: list[str] | None = None) -> int:
     missing = missing_environment()
     if missing:
         raise RuntimeError(f"Missing required environment variables: {', '.join(missing)}")
@@ -159,7 +251,8 @@ def main(source_ids: list[str] | None = None) -> int:
     engine = build_engine()
     try:
         init_db(engine)
-        collect_source(engine, source_ids)
+        start_date = resolve_start_date(engine, start_date_arg)
+        collect_source(engine, start_date, source_ids)
     finally:
         engine.dispose()
     return 0
@@ -173,7 +266,7 @@ def run(argv: list[str] | None = None) -> int:
     traceback_text: str | None = None
     return_code = 0
     try:
-        return_code = main(args.source_id)
+        return_code = main(args.start_date, args.source_id)
     except Exception:
         status = "error"
         traceback_text = traceback.format_exc()
