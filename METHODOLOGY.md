@@ -65,3 +65,40 @@ identifier. Receipts may be negative; a physical quantity may not.
 A bulletin is periodic activity data. A duty *rate* is a tax parameter, usually
 announced ahead of the date it takes effect. They are different economic
 objects with different point-in-time semantics and are not collected together.
+
+## The two bulletins do not share a history depth
+
+The Tobacco Bulletin publishes a continuous monthly series from 1991. The
+Alcohol Bulletin does not: its monthly tables begin in August 2023.
+
+That start date is the source's, not this collector's. HMRC states on the
+workbook cover that "all clearances statistics in the tables now relate only to
+the new Alcohol Duty regime introduced in August 2023", and Table 1c on every
+product sheet begins at August 2023 for production and receipts as well. The
+page carries a single data attachment, which is downloaded and parsed in full,
+so the window is neither a parser nor a download limitation. Pre-reform figures
+survive only in archived bulletins at the National Archives and UK Trade Info,
+on the old basis of taxation — litres of product rather than litres of pure
+alcohol, and for beer clearances in hectolitres rather than litres. Chaining
+those onto the current series would fabricate a level break, so the guideline's
+stitching rule does not apply: there is no compatible historical workbook to
+stitch.
+
+A single five-year floor therefore removed all 48 alcohol series — every one of
+them current and near-complete — and would have kept doing so until 2028. The
+floor is declared per data set in `scripts/config.py` instead: five years for
+tobacco, eighteen months for alcohol.
+
+Depth is not the only test, because a shorter floor on its own would also admit
+a stub or a half-parsed sheet. A series must additionally be dense: it has to
+cover at least 80% of the periods in its own span. Density is measured at the
+frequency the catalog declares for that series, not on a monthly calendar,
+because the bulletin publishes UK potable spirits production quarterly inside
+an otherwise monthly workbook; judged monthly, that complete series reads as
+two-thirds empty and is dropped. Staleness is unchanged, so a discontinued
+alcohol series is still removed on recency.
+
+`tests/test_alcohol_regime_thresholds.py` holds both halves of this decision:
+a full new-regime series and the quarterly series survive, while a two-print
+stub, an every-other-month parse, a mislabelled frequency, a discontinued
+series and an undeclared data set are all refused.

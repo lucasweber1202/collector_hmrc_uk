@@ -188,7 +188,7 @@ def collect_source(engine: Engine, start_date: date, source_ids: list[str] | Non
                 # 5.1: prune dead and history-less series, judged over the full
                 # parsed history, before anything is written.
                 kept_observations, kept_catalog, _usability = filter_usable_series(
-                    data.observations, data.catalog, datetime.now(UTC).date()
+                    data.observations, data.catalog, datetime.now(UTC).date(), source_id
                 )
                 # A run that keeps no series persists nothing, so returning normally
                 # here would exit 0 and read as a successful collection. That is how a
