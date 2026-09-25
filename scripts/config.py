@@ -77,13 +77,38 @@ RATE_LIMIT_BACKOFF = float(os.getenv("COLLECTOR_RATE_LIMIT_BACKOFF", "20"))
 MAX_RETRY_DELAY = float(os.getenv("COLLECTOR_MAX_RETRY_DELAY", "120"))
 MAX_DOWNLOAD_BYTES = int(os.getenv("COLLECTOR_MAX_DOWNLOAD_BYTES", str(128 * 1024 * 1024)))
 
-# 5.1 usable-series thresholds, chosen for this source's cadence:
-# monthly alcohol and tobacco bulletins.
-# A series whose latest non-null observation is older than
-# MAX_STALE_MONTHS is discontinued in practice; one whose non-null span
-# is shorter than MIN_HISTORY_YEARS cannot be modelled as a predictor.
+# 5.1 usable-series thresholds. Both bulletins are monthly, but they do not
+# share a history depth, so a single MIN_HISTORY_YEARS cannot serve both.
+#
+# The Tobacco Bulletin publishes a continuous monthly series from 1991.
+#
+# The Alcohol Bulletin does not. HMRC states on the workbook cover that "all
+# clearances statistics in the tables now relate only to the new Alcohol Duty
+# regime introduced in August 2023", and its monthly table (Table 1c on every
+# product sheet) begins at August 2023 for production and receipts as well.
+# Pre-reform figures survive only in archived bulletins at the National
+# Archives and UK Trade Info, on the old basis of taxation -- litres of product
+# rather than litres of pure alcohol, and for beer clearances in hectolitres
+# rather than litres. Chaining those onto the current series would fabricate a
+# level break, so the published window genuinely starts in August 2023.
+#
+# A five-year floor therefore drops all 48 alcohol series -- every one of them
+# current and near-complete -- and keeps doing so until 2028. The floor is set
+# per data set instead, and a new-regime series is separated from a stub by
+# requiring density rather than depth: a legitimate series covers nearly every
+# period of its own span, while a stub, a broken parse or a discontinued series
+# does not. Density is measured against the frequency the catalog declares for
+# the series, because the Alcohol Bulletin publishes UK potable spirits
+# production quarterly inside an otherwise monthly workbook; judging that one
+# against a monthly calendar would drop a complete series as sparse.
 MAX_STALE_MONTHS = int(os.getenv("COLLECTOR_MAX_STALE_MONTHS", "6"))
 MIN_HISTORY_YEARS = float(os.getenv("COLLECTOR_MIN_HISTORY_YEARS", "5"))
+MIN_DENSITY = float(os.getenv("COLLECTOR_MIN_DENSITY", "0.8"))
+
+# The alcohol floor is 1.5 years: comfortably below the regime's own age so the
+# series survive, comfortably above a one-or-two-print stub. Density and
+# staleness are unchanged -- a dead or sparse alcohol series is still dropped.
+ALCOHOL_MIN_HISTORY_YEARS = float(os.getenv("COLLECTOR_ALCOHOL_MIN_HISTORY_YEARS", "1.5"))
 
 
 def missing_environment(prod: bool = PROD) -> list[str]:

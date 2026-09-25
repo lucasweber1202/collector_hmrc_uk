@@ -33,7 +33,12 @@ from typing import Any
 
 import httpx
 
-from scripts.config import MAX_STALE_MONTHS, MIN_HISTORY_YEARS
+from scripts.config import (
+    ALCOHOL_MIN_HISTORY_YEARS,
+    MAX_STALE_MONTHS,
+    MIN_DENSITY,
+    MIN_HISTORY_YEARS,
+)
 from scripts.extract_hmrc_alcohol_bulletin import collect as _collect_alcohol_bulletin
 from scripts.extract_hmrc_tobacco_bulletin import collect as _collect_tobacco_bulletin
 from scripts.govuk import SourceData, build_client
@@ -79,6 +84,37 @@ def build_series_id(*components: str) -> str:
 
 
 @dataclass(frozen=True)
+class SourceThresholds:
+    """The 5.1 floors one data set is judged against.
+
+    Held per data set because this repository owns two bulletins whose
+    published history depths differ by three decades. See scripts/config.py for
+    why the alcohol floor is not the tobacco one.
+    """
+
+    max_stale_months: int = MAX_STALE_MONTHS
+    min_history_years: float = MIN_HISTORY_YEARS
+    min_density: float = MIN_DENSITY
+
+
+SOURCE_THRESHOLDS: dict[str, SourceThresholds] = {
+    "hmrc_tobacco_bulletin": SourceThresholds(),
+    "hmrc_alcohol_bulletin": SourceThresholds(min_history_years=ALCOHOL_MIN_HISTORY_YEARS),
+}
+
+
+def thresholds_for(source_id: str | None) -> SourceThresholds:
+    """Return the floors for ``source_id``, defaulting to the strict ones."""
+    if source_id is None:
+        return SourceThresholds()
+    if source_id not in SOURCE_THRESHOLDS:
+        raise ValueError(
+            f"No 5.1 thresholds declared for {source_id!r}; known: {sorted(SOURCE_THRESHOLDS)}"
+        )
+    return SOURCE_THRESHOLDS[source_id]
+
+
+@dataclass(frozen=True)
 class UsabilityReport:
     """What the filter removed, for logging and for tests to assert on."""
 
@@ -86,10 +122,13 @@ class UsabilityReport:
     stale: tuple[str, ...]
     short_history: tuple[str, ...]
     empty: tuple[str, ...]
+    sparse: tuple[str, ...] = ()
 
     @property
     def dropped(self) -> tuple[str, ...]:
-        return tuple(sorted(set(self.stale) | set(self.short_history) | set(self.empty)))
+        return tuple(
+            sorted(set(self.stale) | set(self.short_history) | set(self.empty) | set(self.sparse))
+        )
 
 
 def _months_between(earlier: date, later: date) -> int:
@@ -111,26 +150,55 @@ def _is_valid(value: Any) -> bool:
     return math.isfinite(numeric)
 
 
+PERIOD_MONTHS: dict[str, int] = {
+    "monthly": 1,
+    "quarterly": 3,
+    "annual": 12,
+}
+
+
+def period_months(frequency: str | None) -> int:
+    """Return the month step of ``frequency``, defaulting to monthly."""
+    if frequency is None:
+        return 1
+    step = PERIOD_MONTHS.get(frequency)
+    if step is None:
+        raise ValueError(f"Unknown frequency {frequency!r}; known: {sorted(PERIOD_MONTHS)}")
+    return step
+
+
 def assess_series(
     reference_dates: list[date],
     today: date,
-    max_stale_months: int = MAX_STALE_MONTHS,
-    min_history_years: float = MIN_HISTORY_YEARS,
+    thresholds: SourceThresholds | None = None,
+    frequency: str | None = None,
 ) -> str:
     """Classify one series from the reference dates of its valid observations.
 
-    Returns ``"keep"``, ``"empty"``, ``"stale"`` or ``"short_history"``.
-    Recency is judged at the period end and over non-null values only: a source
-    that keeps listing a discontinued series with empty recent cells must not
-    look live because of those blanks.
+    Returns ``"keep"``, ``"empty"``, ``"stale"``, ``"short_history"`` or
+    ``"sparse"``. Recency is judged at the period end and over non-null values
+    only: a source that keeps listing a discontinued series with empty recent
+    cells must not look live because of those blanks.
+
+    Depth alone cannot separate a series that is young because its statistical
+    regime is young from a stub or a half-parsed sheet, so a series must also be
+    dense: it has to cover nearly every period of its own span. Density is
+    measured at the frequency the catalog declares, because this source
+    publishes one quarterly series inside an otherwise monthly workbook.
     """
+    limits = thresholds or SourceThresholds()
     if not reference_dates:
         return "empty"
     first, last = min(reference_dates), max(reference_dates)
-    if _months_between(last, today) > max_stale_months:
+    if _months_between(last, today) > limits.max_stale_months:
         return "stale"
-    if _months_between(first, last) < round(min_history_years * 12):
+    span_months = _months_between(first, last)
+    if span_months < round(limits.min_history_years * 12):
         return "short_history"
+    step = period_months(frequency)
+    expected = span_months // step + 1
+    if len(reference_dates) < limits.min_density * expected:
+        return "sparse"
     return "keep"
 
 
@@ -138,8 +206,8 @@ def filter_usable_series(
     observations: list[Any],
     catalog: dict[str, dict[str, Any]],
     today: date,
-    max_stale_months: int = MAX_STALE_MONTHS,
-    min_history_years: float = MIN_HISTORY_YEARS,
+    source_id: str | None = None,
+    thresholds: SourceThresholds | None = None,
 ) -> tuple[list[Any], dict[str, dict[str, Any]], UsabilityReport]:
     """Drop obsolete and history-less series before anything is persisted.
 
@@ -148,6 +216,7 @@ def filter_usable_series(
     catalog alongside the observations so metadata can never describe a series
     the database does not hold (GUIDELINES.md 5.1).
     """
+    limits = thresholds or thresholds_for(source_id)
     valid_dates: dict[str, list[date]] = {}
     for observation in observations:
         if _is_valid(observation.value):
@@ -156,7 +225,10 @@ def filter_usable_series(
     verdicts: dict[str, str] = {}
     for series_id in set(catalog) | {o.series_id for o in observations}:
         verdicts[series_id] = assess_series(
-            valid_dates.get(series_id, []), today, max_stale_months, min_history_years
+            valid_dates.get(series_id, []),
+            today,
+            limits,
+            catalog.get(series_id, {}).get("frequency"),
         )
 
     keep = {series_id for series_id, verdict in verdicts.items() if verdict == "keep"}
@@ -165,29 +237,41 @@ def filter_usable_series(
         stale=tuple(sorted(s for s, v in verdicts.items() if v == "stale")),
         short_history=tuple(sorted(s for s, v in verdicts.items() if v == "short_history")),
         empty=tuple(sorted(s for s, v in verdicts.items() if v == "empty")),
+        sparse=tuple(sorted(s for s, v in verdicts.items() if v == "sparse")),
     )
 
     if report.dropped:
         logger.info(
-            "Usable-series filter: kept %d, dropped %d "
-            "(stale=%d short_history=%d empty=%d; max_stale_months=%d min_history_years=%s)",
+            "Usable-series filter for %s: kept %d, dropped %d (stale=%d short_history=%d "
+            "sparse=%d empty=%d; max_stale_months=%d min_history_years=%s min_density=%s)",
+            source_id or "<unnamed>",
             len(report.kept),
             len(report.dropped),
             len(report.stale),
             len(report.short_history),
+            len(report.sparse),
             len(report.empty),
-            max_stale_months,
-            min_history_years,
+            limits.max_stale_months,
+            limits.min_history_years,
+            limits.min_density,
         )
         for series_id in report.stale:
             logger.info(
                 "Dropped %s: last valid observation older than %d months",
                 series_id,
-                max_stale_months,
+                limits.max_stale_months,
             )
         for series_id in report.short_history:
             logger.info(
-                "Dropped %s: valid history shorter than %s years", series_id, min_history_years
+                "Dropped %s: valid history shorter than %s years",
+                series_id,
+                limits.min_history_years,
+            )
+        for series_id in report.sparse:
+            logger.info(
+                "Dropped %s: below %s coverage of its own span at its declared frequency",
+                series_id,
+                limits.min_density,
             )
         for series_id in report.empty:
             logger.info("Dropped %s: no valid observations", series_id)
